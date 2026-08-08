@@ -1,0 +1,41 @@
+server:
+  port: 9233
+  poll_interval: 10 # Seconds between background polls
+
+# Global extra labels applied to ALL metrics exported by this container
+global_labels:
+  environment: "home-lab"
+  site: "brampton"
+
+devices:
+  - ip: "192.168.1.100"
+    name_override: "Core-Rack-Strip" # Optional override for strip name
+    outlets:
+      0:
+        name: "UPS-Main"
+        labels:
+          role: "infrastructure"
+          target_app: "nut-server"
+      1:
+        name: "Proxmox-Node-01"
+        labels:
+          role: "compute"
+          target_app: "proxmox"
+      2:
+        name: "Unifi-PoE-Switch"
+        labels:
+          role: "networking"
+          target_app: "networking"
+      3:
+        name: "3D-Printer"
+        labels:
+          role: "hardware"
+          target_app: "octoprint"
+
+  - ip: "192.168.1.101"
+    outlets:
+      0:
+        name: "Desk-Monitor"
+        labels:
+          role: "workstation"
+          target_app: "display"
