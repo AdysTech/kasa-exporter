@@ -138,7 +138,8 @@ global_labels:
   site: "brampton"
 
 devices:
-  - ip: "192.168.1.100"
+  - ip: "192.168.1.100"       # IP address of the device
+    # host: "kasa-strip.local"  # OR hostname (either ip or host is required)
     name_override: "Core-Rack-Strip"
     outlets:
       0:
@@ -153,6 +154,17 @@ devices:
           target_app: "proxmox"
 ```
 
+### Device Configuration Fields
+
+Each device entry supports the following fields:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `ip` | One of `ip` or `host` | IP address of the Kasa device (e.g., `"192.168.1.100"`) |
+| `host` | One of `ip` or `host` | Hostname of the Kasa device (e.g., `"kasa-strip.local"`). Useful when devices have dynamic IPs but stable mDNS/DNS names. If both `ip` and `host` are provided, `host` takes precedence for connection. |
+| `name_override` | No | Custom name for the device, used in the `device_name` label. Defaults to `kasa_<address>` if not set. |
+| `outlets` | No | Map of outlet index to outlet configuration (name, custom labels) |
+
 ### Configuration Validation (Edge Cases)
 
 The exporter validates `config.yaml` at startup and exits with a non-zero code on fatal errors:
@@ -163,8 +175,8 @@ The exporter validates `config.yaml` at startup and exits with a non-zero code o
 | **Malformed YAML** | Fatal error, logs parse details then exits |
 | **Empty / comment-only config** | Fatal error, exits with descriptive message |
 | **Missing `devices` section** | Warning logged; exporter continues (no devices to poll) |
-| **Device entry missing `ip`** | Fatal error, exits |
-| **Invalid IP address format** | Fatal error, exits with details |
+| **Device entry missing both `ip` and `host`** | Fatal error, exits |
+| **Invalid IP address format** | Fatal error, exits with details (only validated if `ip` is provided) |
 
 ### Environment Variables
 
