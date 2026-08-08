@@ -9,6 +9,7 @@ global_labels:
 
 devices:
   - ip: "192.168.1.100"
+    host: HS300
     name_override: "Core-Rack-Strip" # Optional override for strip name
     outlets:
       0:
