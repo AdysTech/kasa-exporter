@@ -46,12 +46,14 @@ def load_config():
         logging.warning("No 'devices' section found in config.")
     for idx, dev in enumerate(devices):
         ip = dev.get("ip")
-        if not ip:
-            raise ValueError(f"Device #{idx} missing required 'ip' field.")
-        try:
-            ipaddress.ip_address(ip)
-        except ValueError:
-            raise ValueError(f"'{ip}' is not a valid IP address for device #{idx}.")
+        host = dev.get("host")
+        if not ip and not host:
+            raise ValueError(f"Device #{idx} missing required field: either 'ip' or 'host' must be provided.")
+        if ip:
+            try:
+                ipaddress.ip_address(ip)
+            except ValueError:
+                raise ValueError(f"'{ip}' is not a valid IP address for device #{idx}.")
     return config
 
 try:
@@ -113,35 +115,38 @@ def classify_error(exc):
     return "unknown", 99
 
 
-async def connect_device(ip):
+async def connect_device(address):
     try:
-        dev = await asyncio.wait_for(SmartDevice.connect(host=ip), timeout=CONNECT_TIMEOUT)
+        dev = await asyncio.wait_for(SmartDevice.connect(host=address), timeout=CONNECT_TIMEOUT)
         return dev
     except (TimeoutError, asyncio.TimeoutError):
-        logging.warning(f"Connection timed out after {CONNECT_TIMEOUT}s for {ip}")
+        logging.warning(f"Connection timed out after {CONNECT_TIMEOUT}s for {address}")
         raise
     except AttributeError:
-        dev = SmartStrip(ip)
+        dev = SmartStrip(address)
         await asyncio.wait_for(dev.update(), timeout=CONNECT_TIMEOUT)
         return dev
 
 
 async def poll_device(device_cfg, poll_interval):
-    ip = device_cfg["ip"]
+    ip = device_cfg.get("ip", "")
+    host = device_cfg.get("host", "")
+    # Use host if provided, otherwise fall back to ip
+    device_address = host or ip
     outlet_cfg = device_cfg.get("outlets", {})
-    dev_name = device_cfg.get("name_override") or f"kasa_{ip}"
+    dev_name = device_cfg.get("name_override") or f"kasa_{device_address}"
 
     # Initialize gauges for error tracking
-    GAUGE_DEVICE_REACHABLE.labels(device_ip=ip, device_name=dev_name).set(0)
-    GAUGE_LAST_ERROR_CODE.labels(device_ip=ip, device_name=dev_name, error_type='none').set(0)
+    GAUGE_DEVICE_REACHABLE.labels(device_ip=ip or "", device_name=dev_name).set(0)
+    GAUGE_LAST_ERROR_CODE.labels(device_ip=ip or "", device_name=dev_name, error_type='none').set(0)
 
     while True:
         try:
-            dev = await connect_device(ip)
+            dev = await connect_device(device_address)
 
             # Update reachable status on success
-            GAUGE_DEVICE_REACHABLE.labels(device_ip=ip, device_name=dev_name).set(1)
-            GAUGE_LAST_ERROR_CODE.labels(device_ip=ip, device_name=dev_name, error_type='none').set(0)
+            GAUGE_DEVICE_REACHABLE.labels(device_ip=ip or "", device_name=dev_name).set(1)
+            GAUGE_LAST_ERROR_CODE.labels(device_ip=ip or "", device_name=dev_name, error_type='none').set(0)
 
             # Build global label dict
             gl = {k: global_labels.get(k, "") for k in GLOBAL_LABEL_KEYS}
@@ -149,51 +154,51 @@ async def poll_device(device_cfg, poll_interval):
             # ─── System Metadata ──────────────────────────────────────
             try:
                 GAUGE_INFO.labels(
-                    device_ip=ip, device_name=dev_name,
+                    device_ip=ip or "", device_name=dev_name,
                     model=dev.alias, firmware=getattr(dev, 'firmware', {}),
                     hardware=getattr(dev, 'hardware', {}),
                     mac=getattr(dev, 'mac_address', '') or ''
                 ).set(1)
             except Exception as e:
-                logging.warning(f"Could not set metadata for {ip}: {e}")
+                logging.warning(f"Could not set metadata for {device_address}: {e}")
 
             # ─── Device-level gauges ──────────────────────────────────
             try:
                 if hasattr(dev, 'rssi'):
-                    GAUGE_RSSI.labels(device_ip=ip, device_name=dev_name, **gl).set(dev.rssi)
+                    GAUGE_RSSI.labels(device_ip=ip or "", device_name=dev_name, **gl).set(dev.rssi)
                 else:
                     sys_info = dev.system_information or {}
                     rssi_val = int(sys_info.get('rssi', 0)) if sys_info else None
                     if rssi_val is not None:
-                        GAUGE_RSSI.labels(device_ip=ip, device_name=dev_name, **gl).set(rssi_val)
+                        GAUGE_RSSI.labels(device_ip=ip or "", device_name=dev_name, **gl).set(rssi_val)
 
                 uptime_val = getattr(dev, 'uptime', None) or 0
                 try:
                     if isinstance(uptime_val, (int, float)) and uptime_val > 0:
-                        GAUGE_UPTIME.labels(device_ip=ip, device_name=dev_name, **gl).set(uptime_val)
+                        GAUGE_UPTIME.labels(device_ip=ip or "", device_name=dev_name, **gl).set(uptime_val)
                 except Exception:
                     pass
 
             except Exception as e:
-                logging.warning(f"Could not read rssi/uptime for {ip}: {e}")
+                logging.warning(f"Could not read rssi/uptime for {device_address}: {e}")
 
             # ─── Aggregate (root device) metrics ──────────────────────
             try:
                 em = dev.emeter_realtime
                 if em:
-                    GAUGE_DEV_POWER.labels(device_ip=ip, device_name=dev_name, **gl).set(em.get('power_mw', 0) / 1000.0)
-                    GAUGE_DEV_VOLTAGE.labels(device_ip=ip, device_name=dev_name, **gl).set(em.get('voltage_mv', 0) / 1000.0)
-                    GAUGE_DEV_CURRENT.labels(device_ip=ip, device_name=dev_name, **gl).set(em.get('current_ma', 0) / 1000.0)
+                    GAUGE_DEV_POWER.labels(device_ip=ip or "", device_name=dev_name, **gl).set(em.get('power_mw', 0) / 1000.0)
+                    GAUGE_DEV_VOLTAGE.labels(device_ip=ip or "", device_name=dev_name, **gl).set(em.get('voltage_mv', 0) / 1000.0)
+                    GAUGE_DEV_CURRENT.labels(device_ip=ip or "", device_name=dev_name, **gl).set(em.get('current_ma', 0) / 1000.0)
             except Exception as e:
-                logging.warning(f"Could not read aggregate emeter for {ip}: {e}")
+                logging.warning(f"Could not read aggregate emeter for {device_address}: {e}")
 
             # Cumulative energy (total)
             try:
                 total_em = dev.emeter_statistics
                 if total_em:
-                    GAUGE_DEV_ENERGY.labels(device_ip=ip, device_name=dev_name, **gl).set(total_em.get('total', 0))
+                    GAUGE_DEV_ENERGY.labels(device_ip=ip or "", device_name=dev_name, **gl).set(total_em.get('total', 0))
             except Exception as e:
-                logging.warning(f"Could not read cumulative emeter for {ip}: {e}")
+                logging.warning(f"Could not read cumulative emeter for {device_address}: {e}")
 
             # ─── Per-outlet metrics (child plugs) ─────────────────────
             children = getattr(dev, 'children', [])
@@ -203,13 +208,13 @@ async def poll_device(device_cfg, poll_interval):
                     o_cfg = outlet_cfg.get(str(idx_val), {})
                     o_name = o_cfg.get("name", f"Outlet_{idx_val}")
                     custom = {k: o_cfg.get("labels", {}).get(k, global_labels.get(k, "")) for k in OUTLET_CUSTOM_LABEL_KEYS}
-                    out_labels = dict(device_ip=ip, device_name=dev_name, outlet_index=idx_val, outlet_name=o_name, **custom)
+                    out_labels = dict(device_ip=ip or "", device_name=dev_name, outlet_index=idx_val, outlet_name=o_name, **custom)
 
                     # On/Off state
                     try:
                         GAUGE_STATE.labels(**out_labels).set(1 if child.is_on else 0)
                     except Exception as e:
-                        logging.warning(f"Could not read state for child {idx_val} on {ip}: {e}")
+                        logging.warning(f"Could not read state for child {idx_val} on {device_address}: {e}")
 
                     # Child real-time emeter
                     try:
@@ -219,7 +224,7 @@ async def poll_device(device_cfg, poll_interval):
                             GAUGE_VOLTAGE.labels(**out_labels).set(c_em.get('voltage_mv', 0) / 1000.0)
                             GAUGE_CURRENT.labels(**out_labels).set(c_em.get('current_ma', 0) / 1000.0)
                     except Exception as e:
-                        logging.warning(f"Could not read emeter for child {idx_val} on {ip}: {e}")
+                        logging.warning(f"Could not read emeter for child {idx_val} on {device_address}: {e}")
 
                     # Child cumulative energy
                     try:
@@ -227,14 +232,14 @@ async def poll_device(device_cfg, poll_interval):
                         if c_total:
                             GAUGE_ENERGY.labels(**out_labels).set(c_total.get('total', 0))
                     except Exception as e:
-                        logging.warning(f"Could not read statistics for child {idx_val} on {ip}: {e}")
+                        logging.warning(f"Could not read statistics for child {idx_val} on {device_address}: {e}")
 
         except Exception as e:
             # ─── Edge case: any connection/poll error ────────────────
             err_type, err_code = classify_error(e)
-            GAUGE_DEVICE_REACHABLE.labels(device_ip=ip, device_name=dev_name).set(0)
-            GAUGE_LAST_ERROR_CODE.labels(device_ip=ip, device_name=dev_name, error_type=err_type).set(err_code)
-            logging.error(f"Error polling {ip}: [{err_type}] {e}")
+            GAUGE_DEVICE_REACHABLE.labels(device_ip=ip or "", device_name=dev_name).set(0)
+            GAUGE_LAST_ERROR_CODE.labels(device_ip=ip or "", device_name=dev_name, error_type=err_type).set(err_code)
+            logging.error(f"Error polling {device_address}: [{err_type}] {e}")
 
         await asyncio.sleep(poll_interval)
 
