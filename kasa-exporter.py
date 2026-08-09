@@ -5,9 +5,43 @@ import asyncio
 import logging
 import socket
 import ipaddress
-from datetime import datetime, timezone
+from datetime import datetime, timezone as dt_timezone
+from zoneinfo import ZoneInfoNotFoundError
 from prometheus_client import start_http_server, Gauge
 from kasa import Device
+
+# ─── Timezone Compatibility Fix ──────────────────────────────────────
+# Kasa devices report POSIX timezone strings (e.g. PST8PDT) that Python's
+# zoneinfo cannot resolve when tzdata is incomplete in Docker containers.
+# This patches the CachedZoneInfo to gracefully handle missing zones.
+def _patch_timezone_lookup():
+    """Patch kasa's timezone handling to not crash on missing tzdata.
+    
+    Kasa devices report POSIX timezone strings (e.g. PST8PDT) that Python's
+    zoneinfo cannot resolve when tzdata is incomplete in Docker containers.
+    This wraps the lookup to gracefully fall back to UTC.
+    """
+    try:
+        from kasa import cachedzoneinfo
+        original_get = cachedzoneinfo._get_zone_info
+
+        def safe_get_zone_info(time_zone_str):
+            try:
+                return original_get(time_zone_str)
+            except (ZoneInfoNotFoundError, KeyError, Exception):
+                logging.debug(
+                    f"Timezone '{time_zone_str}' not found in system tzdata, "
+                    f"defaulting to UTC. Install tzdata or set TZ to fix."
+                )
+                from datetime import UTC
+                return UTC
+
+        cachedzoneinfo._get_zone_info = safe_get_zone_info
+    except Exception as e:
+        logging.warning(f"Could not patch timezone lookup: {e}")
+
+
+_patch_timezone_lookup()
 
 CONFIG_PATH = os.getenv("CONFIG_PATH", "config.yaml")
 CONNECT_TIMEOUT = int(os.getenv("KASA_CONNECT_TIMEOUT", "10"))
@@ -155,9 +189,31 @@ async def poll_device(device_cfg, poll_interval):
     # Resolve hostname to actual IP address for all label values
     resolved_ip = resolve_host(device_address) if device_address else ""
 
-    # Initialize gauges for error tracking
-    GAUGE_DEVICE_REACHABLE.labels(device_ip=resolved_ip, device_name=dev_name).set(0)
-    GAUGE_LAST_ERROR_CODE.labels(device_ip=resolved_ip, device_name=dev_name, error_type='none').set(0)
+    # ─── Startup: Attempt initial connection to validate device ────────
+    logging.info(f"Initializing device '{dev_name}' -> {device_address} (resolved: {resolved_ip})")
+    try:
+        dev = await connect_device(device_address)
+        model_str = getattr(dev, 'alias', 'Unknown') or 'Unknown'
+        dev_info = getattr(dev, 'device_info', None)
+        firmware_str = str(dev_info.firmware_version) if dev_info and dev_info.firmware_version else 'N/A'
+        logging.info(
+            f"  Device found: {model_str}, "
+            f"firmware={firmware_str}, "
+            f"MAC={getattr(dev, 'sys_info', {}).get('mac', 'N/A')}"
+        )
+    except Exception as e:
+        err_type, _ = classify_error(e)
+        logging.critical(
+            f"  Cannot connect to '{dev_name}' at {device_address} ({resolved_ip}): "
+            f"[{err_type}] {e} — this device will NOT be polled."
+        )
+        # Still initialize gauges so Prometheus sees them as unreachable
+        GAUGE_DEVICE_REACHABLE.labels(device_ip=resolved_ip, device_name=dev_name).set(0)
+        GAUGE_LAST_ERROR_CODE.labels(device_ip=resolved_ip, device_name=dev_name, error_type=err_type).set(99)
+        # Re-enter loop so the device is still retried each interval
+    finally:
+        GAUGE_DEVICE_REACHABLE.labels(device_ip=resolved_ip, device_name=dev_name).set(0)
+        GAUGE_LAST_ERROR_CODE.labels(device_ip=resolved_ip, device_name=dev_name, error_type='none').set(0)
 
     while True:
         try:
