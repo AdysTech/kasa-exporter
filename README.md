@@ -87,7 +87,9 @@ All metrics are exposed as Prometheus `Gauge` types.
 | `kasa_device_power_watts` | Total real-time power draw for entire strip in Watts | `device_ip`, `device_name`, + global labels |
 | `kasa_device_voltage_volts` | Main line voltage in Volts | `device_ip`, `device_name`, + global labels |
 | `kasa_device_current_amps` | Total current draw across whole strip in Amps | `device_ip`, `device_name`, + global labels |
-| `kasa_device_total_kwh` | Total cumulative energy consumption in kWh | `device_ip`, `device_name`, + global labels |
+| `kasa_device_total_kwh` | Total cumulative energy consumption since reboot in kWh | `device_ip`, `device_name`, + global labels |
+| `kasa_device_energy_today_kwh` | Today's energy consumption for the entire device in kWh (reset by device clock) | `device_ip`, `device_name`, + global labels |
+| `kasa_device_energy_month_kwh` | This month's energy consumption for the entire device in kWh (reset by device clock) | `device_ip`, `device_name`, + global labels |
 
 ### Per-Outlet Child Metrics (Individual Sockets)
 
@@ -97,7 +99,9 @@ All metrics are exposed as Prometheus `Gauge` types.
 | `kasa_outlet_power_watts` | Real-time outlet power draw in Watts | `device_ip`, `device_name`, `outlet_index`, `outlet_name`, + custom labels |
 | `kasa_outlet_voltage_volts` | Outlet voltage in Volts | `device_ip`, `device_name`, `outlet_index`, `outlet_name`, + custom labels |
 | `kasa_outlet_current_amps` | Outlet current draw in Amperes | `device_ip`, `device_name`, `outlet_index`, `outlet_name`, + custom labels |
-| `kasa_outlet_total_kwh` | Cumulative outlet energy consumption in kWh | `device_ip`, `device_name`, `outlet_index`, `outlet_name`, + custom labels |
+| `kasa_outlet_total_kwh` | Cumulative outlet energy consumption since reboot in kWh | `device_ip`, `device_name`, `outlet_index`, `outlet_name`, + custom labels |
+| `kasa_outlet_energy_today_kwh` | Today's energy consumption for this outlet in kWh (reset by device clock) | `device_ip`, `device_name`, `outlet_index`, `outlet_name`, + custom labels |
+| `kasa_outlet_energy_month_kwh` | This month's energy consumption for this outlet in kWh (reset by device clock) | `device_ip`, `device_name`, `outlet_index`, `outlet_name`, + custom labels |
 
 ### Labels
 
