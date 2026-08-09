@@ -519,10 +519,12 @@ async def poll_device(dev_config, poll_interval):
 
     while True:
         try:
+            logging.debug("Polling %s (%s)", dev_name, device_address)
             dev = await connect_device(device_address)
             # Build global label dict
             gl = {k: global_labels.get(k, "") for k in GLOBAL_LABEL_KEYS}
             _poll_device_once(dev, dev_name, resolved_ip, outlet_cfg, gl)
+            logging.info("Successfully polled %s (%s)", dev_name, device_address)
         except Exception as exc:  # noqa: BLE001
             err_type, err_code = classify_error(exc)
             GAUGE_DEVICE_REACHABLE.labels(

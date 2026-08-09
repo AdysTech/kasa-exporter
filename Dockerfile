@@ -7,7 +7,7 @@ WORKDIR /app
 # Install dependencies including tzdata for timezone resolution
 RUN pip install --no-cache-dir "python-kasa[speedups]" prometheus_client pyyaml tzdata
 
-COPY kasa-exporter.py exporter.py
+COPY kasa_exporter.py exporter.py
 
 EXPOSE 9233
 
