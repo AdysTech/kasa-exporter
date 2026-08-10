@@ -4,11 +4,11 @@ LABEL org.opencontainers.image.description="Prometheus exporter for TP-Link Kasa
 
 WORKDIR /app
 
-# Install python-kasa with speedups for optimized JSON parsing
-RUN pip install --no-cache-dir "python-kasa[speedups]" prometheus_client pyyaml
+# Install dependencies including tzdata for timezone resolution
+RUN pip install --no-cache-dir "python-kasa[speedups]" prometheus_client pyyaml tzdata
 
-COPY kasa-exporter.py exporter.py
+COPY kasa_exporter.py exporter.py
 
 EXPOSE 9233
 
-CMD ["python", "exporter.py"] 
+CMD ["python", "exporter.py"]

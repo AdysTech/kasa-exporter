@@ -1,0 +1,15 @@
+[MESSAGES CONTROL]
+# Protected access is intentional for patching kasa internals
+# Broad exceptions are used intentionally for device communication resilience
+disable=
+    protected-access,
+    broad-exception-caught,
+    import-outside-toplevel,
+    too-many-locals
+
+[FORMAT]
+max-line-length=120
+
+[BASIC]
+good-names=
+    i,j,k,e,v,gl,idx,val,exc,o_cfg,_idx
